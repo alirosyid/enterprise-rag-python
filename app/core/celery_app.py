@@ -4,14 +4,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Mengambil URL Redis dari variabel lingkungan Docker
-REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+IS_TESTING = os.getenv("TESTING_ENV", "false").lower() == "true"
 
-# Menginisialisasi koneksi Worker ke Message Broker
+if IS_TESTING:
+    # Enterprise CI/CD Fix: Use in-memory broker during automated testing
+    # to avoid dependency on a live Redis server.
+    BROKER_URL = "memory://"
+    BACKEND_URL = "cache+memory://"
+else:
+    # Production architecture uses Redis
+    BROKER_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    BACKEND_URL = BROKER_URL
+
 celery_app = Celery(
     "enterprise_worker",
-    broker=REDIS_URL,
-    backend=REDIS_URL
+    broker=BROKER_URL,
+    backend=BACKEND_URL
 )
 
 celery_app.conf.update(
@@ -20,5 +28,5 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Asia/Jakarta",
     enable_utc=True,
-    worker_prefetch_multiplier=1 # Mencegah worker menimbun tugas
+    worker_prefetch_multiplier=1
 )

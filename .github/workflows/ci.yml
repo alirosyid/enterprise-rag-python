@@ -30,7 +30,7 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         
-    - name: Run Unit Tests with In-Memory DBs
+    - name: Run Unit Tests with In-Memory Architecture
       env:
         # Isolated configuration for fast, decoupled CI/CD testing
         DATABASE_URL: sqlite:///./test.db

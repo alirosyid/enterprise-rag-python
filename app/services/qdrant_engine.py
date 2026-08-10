@@ -9,13 +9,22 @@ QDRANT_HOST = os.getenv("QDRANT_HOST", "qdrant")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", 6333))
 COLLECTION_NAME = "enterprise_knowledge_base"
 
+# Enterprise Check: Detect if running inside an automated testing environment
+IS_TESTING = os.getenv("TESTING_ENV", "false").lower() == "true"
+
 def init_qdrant_client() -> QdrantClient:
     """
     Initializes connection to the Qdrant Vector Database.
-    Creates the collection if it does not exist.
+    Automatically degrades to an ephemeral in-memory database during CI/CD testing.
     """
     try:
-        client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        if IS_TESTING:
+            logger.info("Testing environment detected. Booting Qdrant in memory mode.")
+            # :memory: runs purely in RAM, requires no server, perfect for Pytest
+            client = QdrantClient(":memory:")
+        else:
+            logger.info(f"Connecting to live Qdrant server at {QDRANT_HOST}:{QDRANT_PORT}")
+            client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
         
         # Check if collection exists to avoid recreation errors
         collections = client.get_collections().collections
@@ -35,5 +44,5 @@ def init_qdrant_client() -> QdrantClient:
         logger.error(f"Failed to connect to Qdrant Vector DB: {str(e)}")
         raise
 
-# Initialize at startup
+# Initialize connection at startup
 qdrant_db = init_qdrant_client()

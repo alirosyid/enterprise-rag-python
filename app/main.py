@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException
 import logging
 from app.db.session import engine, Base
 from app.db import models 
-from app.api.schemas import QueryRequest, TaskResponse
+from app.api.schemas import QueryRequest, TaskResponse, IngestRequest, IngestResponse
 from app.core.tasks import process_rag_query
+from app.services.ingest import ingest_document
 
 # Production standard logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -15,13 +16,30 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Enterprise RAG API Gateway",
-    description="Event-driven API Gateway routing requests to Celery background workers.",
+    description="Event-driven API Gateway routing requests to Celery background workers and Qdrant Vector DB.",
     version="1.0.0"
 )
 
 @app.get("/", tags=["System"])
 async def health_check():
     return {"status": "online", "service": "API Gateway", "database_synced": True}
+
+@app.post("/ingest", response_model=IngestResponse, tags=["Knowledge Base"])
+async def upload_document(request: IngestRequest):
+    """
+    Ingests raw text into the Qdrant Vector Database.
+    Slices the text into chunks, generates embeddings, and securely upserts them.
+    """
+    try:
+        chunks_count = ingest_document(text_content=request.text, metadata=request.metadata)
+        return IngestResponse(
+            status="success",
+            chunks_inserted=chunks_count,
+            message="Document successfully embedded and stored in Qdrant."
+        )
+    except Exception as e:
+        logger.error(f"Ingestion failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to ingest document: {str(e)}")
 
 @app.post("/ask", response_model=TaskResponse, status_code=202, tags=["RAG Engine"])
 async def submit_query(request: QueryRequest):
@@ -30,7 +48,6 @@ async def submit_query(request: QueryRequest):
     Returns a 202 Accepted with a task_id for asynchronous polling.
     """
     try:
-        # Dispatch task to Celery worker with webhook support
         task = process_rag_query.delay(
             query=request.query, 
             department=request.department,

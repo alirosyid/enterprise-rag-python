@@ -1,4 +1,5 @@
 import logging
+import httpx
 from celery import shared_task
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
@@ -8,15 +9,14 @@ from app.services.llm_engine import generate_llama_response
 logger = logging.getLogger(__name__)
 
 @celery_app.task(bind=True, name="process_rag_query", max_retries=2)
-def process_rag_query(self, query: str, department: str):
+def process_rag_query(self, query: str, department: str, callback_url: str = None):
     """
-    Background Celery task that executes the RAG pipeline.
-    It logs state to PostgreSQL, calls LLM, and updates FinOps metrics.
+    Executes the RAG pipeline. Logs state to DB, processes via LLM, 
+    and sends a webhook callback to n8n (if URL is provided).
     """
     db = SessionLocal()
     task_id = self.request.id
     
-    # 1. Stateful Logging: Initialize task in PostgreSQL
     finops_record = FinOpsLog(
         task_id=task_id,
         query_type="rag_generation",
@@ -26,28 +26,41 @@ def process_rag_query(self, query: str, department: str):
     db.commit()
     
     try:
-        # 2. Vector Search (Placeholder for Qdrant integration coming next)
         logger.info(f"Task {task_id}: Executing vector search for query: {query}")
         context = "Simulated contextual data from Vector DB."
         
-        # 3. LLM Generation via Groq API
         augmented_prompt = f"Context: {context}\n\nQuery: {query}"
         llm_result = generate_llama_response(augmented_prompt)
         
-        # 4. Update FinOps Logging (Success)
         finops_record.status = "success"
         finops_record.total_tokens = llm_result["tokens"]
-        # Dummy cost calculation: $0.0001 per token for example purposes
         finops_record.cost_usd = llm_result["tokens"] * 0.0001 
         db.commit()
         
-        return {"status": "success", "answer": llm_result["answer"], "tokens_burned": llm_result["tokens"]}
+        payload = {
+            "status": "success", 
+            "task_id": task_id,
+            "answer": llm_result["answer"], 
+            "tokens_burned": llm_result["tokens"]
+        }
+        
+        # Enterprise Callback Engine: Push results back to n8n webhook
+        if callback_url:
+            with httpx.Client() as client:
+                client.post(callback_url, json=payload)
+                logger.info(f"Successfully transmitted callback to {callback_url}")
+                
+        return payload
 
     except Exception as e:
-        # 5. Update FinOps Logging (Failed)
         finops_record.status = "failed"
         db.commit()
         logger.error(f"Task {task_id} failed: {str(e)}")
+        
+        if callback_url:
+            with httpx.Client() as client:
+                client.post(callback_url, json={"status": "failed", "task_id": task_id, "error": str(e)})
+                
         raise self.retry(exc=e, countdown=10)
         
     finally:

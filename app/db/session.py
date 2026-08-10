@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Enterprise architecture requires dynamic hosts, not hardcoded strings
+# Enterprise architecture requires dynamic hosts
 DB_USER = os.getenv("POSTGRES_USER", "admin")
 DB_PASS = os.getenv("POSTGRES_PASSWORD", "securepassword2026")
 DB_NAME = os.getenv("POSTGRES_DB", "enterprise_state")
@@ -17,7 +17,10 @@ DATABASE_URL = os.getenv(
     f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 )
 
-engine = create_engine(DATABASE_URL, echo=False)
+# Enterprise CI/CD Fix: Allow SQLite fallback for isolated unit testing
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+
+engine = create_engine(DATABASE_URL, echo=False, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

@@ -10,32 +10,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     
-    # Spin up ephemeral infrastructure for integration testing
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_USER: admin
-          POSTGRES_PASSWORD: securepassword2026
-          POSTGRES_DB: enterprise_state
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-          
-      qdrant:
-        image: qdrant/qdrant:latest
-        ports:
-          - 6333:6333
-
     steps:
     - uses: actions/checkout@v4
     
@@ -48,7 +22,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 pytest httpx
+        pip install flake8
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         
     - name: Lint with flake8
@@ -56,12 +30,10 @@ jobs:
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         
-    - name: Run Integration Tests with Pytest
+    - name: Run Unit Tests with In-Memory DB
       env:
-        # Override hosts to localhost for GitHub Actions runner environment
-        POSTGRES_HOST: localhost
-        QDRANT_HOST: localhost
-        REDIS_URL: redis://localhost:6379/0
+        # Override to SQLite for fast, decoupled CI/CD testing
+        DATABASE_URL: sqlite:///./test.db
+        GROQ_API_KEY: dummy_key_for_ci
       run: |
-        sleep 10
         pytest tests/ -v

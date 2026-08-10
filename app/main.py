@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 import logging
 from app.db.session import engine, Base
-from app.db import models 
 from app.api.schemas import QueryRequest, TaskResponse, IngestRequest, IngestResponse
 from app.core.tasks import process_rag_query
 from app.services.ingest import ingest_document
+from app.api.auth import verify_api_key
 
 # Production standard logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -24,11 +24,12 @@ app = FastAPI(
 async def health_check():
     return {"status": "online", "service": "API Gateway", "database_synced": True}
 
-@app.post("/ingest", response_model=IngestResponse, tags=["Knowledge Base"])
+# Injected Depends(verify_api_key) to enforce Zero-Trust Security
+@app.post("/ingest", response_model=IngestResponse, tags=["Knowledge Base"], dependencies=[Depends(verify_api_key)])
 async def upload_document(request: IngestRequest):
     """
     Ingests raw text into the Qdrant Vector Database.
-    Slices the text into chunks, generates embeddings, and securely upserts them.
+    Secured endpoint requiring valid X-API-Key header.
     """
     try:
         chunks_count = ingest_document(text_content=request.text, metadata=request.metadata)
@@ -41,11 +42,12 @@ async def upload_document(request: IngestRequest):
         logger.error(f"Ingestion failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to ingest document: {str(e)}")
 
-@app.post("/ask", response_model=TaskResponse, status_code=202, tags=["RAG Engine"])
+# Injected Depends(verify_api_key) to enforce Zero-Trust Security
+@app.post("/ask", response_model=TaskResponse, status_code=202, tags=["RAG Engine"], dependencies=[Depends(verify_api_key)])
 async def submit_query(request: QueryRequest):
     """
     Receives a query, validates it, and dispatches it to the Celery worker queue.
-    Returns a 202 Accepted with a task_id for asynchronous polling.
+    Secured endpoint requiring valid X-API-Key header.
     """
     try:
         task = process_rag_query.delay(

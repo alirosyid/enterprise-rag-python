@@ -63,4 +63,5 @@ jobs:
         QDRANT_HOST: localhost
         REDIS_URL: redis://localhost:6379/0
       run: |
+        sleep 10
         pytest tests/ -v

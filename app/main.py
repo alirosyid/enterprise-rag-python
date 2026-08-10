@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException
 import logging
 from app.db.session import engine, Base
 from app.db import models 
@@ -30,8 +30,12 @@ async def submit_query(request: QueryRequest):
     Returns a 202 Accepted with a task_id for asynchronous polling.
     """
     try:
-        # Dispatch task to Celery worker
-        task = process_rag_query.delay(query=request.query, department=request.department)
+        # Dispatch task to Celery worker with webhook support
+        task = process_rag_query.delay(
+            query=request.query, 
+            department=request.department,
+            callback_url=str(request.callback_url) if request.callback_url else None
+        )
         
         logger.info(f"Task dispatched to worker queue. Task ID: {task.id}")
         
@@ -43,20 +47,3 @@ async def submit_query(request: QueryRequest):
     except Exception as e:
         logger.error(f"Failed to dispatch task: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal message broker error.")
-
-@app.get("/status/{task_id}", tags=["System"])
-async def get_task_status(task_id: str):
-    """
-    Retrieves the current status of a background task from the Celery backend.
-    """
-    from app.core.celery_app import celery_app
-    task_result = celery_app.AsyncResult(task_id)
-    
-    if task_result.state == 'PENDING':
-        return {"task_id": task_id, "status": "pending"}
-    elif task_result.state == 'SUCCESS':
-        return {"task_id": task_id, "status": "success", "result": task_result.result}
-    elif task_result.state == 'FAILURE':
-        return {"task_id": task_id, "status": "failed", "error": str(task_result.info)}
-    else:
-        return {"task_id": task_id, "status": task_result.state}

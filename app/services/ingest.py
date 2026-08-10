@@ -1,14 +1,28 @@
 import logging
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from qdrant_client.http.models import PointStruct
 from app.services.qdrant_engine import qdrant_db, COLLECTION_NAME
 import uuid
 
 logger = logging.getLogger(__name__)
 
-# Initialize local embedding model (runs on CPU/RAM, no API cost)
-embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# Enterprise Fix: Lazy Loading (Singleton) for ML Models
+# Do NOT initialize ML models at the module level. It crashes CI/CD pipelines
+# due to Out-Of-Memory (OOM) errors and blocks FastAPI startup.
+_embeddings_model = None
+
+def get_embeddings_model():
+    """
+    Singleton pattern to ensure the ML model is only loaded into memory 
+    the first time an ingestion request is actually made.
+    """
+    global _embeddings_model
+    if _embeddings_model is None:
+        logger.info("Initializing HuggingFace Embedding Model into memory...")
+        # Local import to prevent downloading weights during module initialization
+        from langchain_community.embeddings import HuggingFaceEmbeddings
+        _embeddings_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    return _embeddings_model
 
 def ingest_document(text_content: str, metadata: dict = None) -> int:
     """
@@ -31,9 +45,10 @@ def ingest_document(text_content: str, metadata: dict = None) -> int:
     if not chunks:
         return 0
 
-    # 2. Generate Embeddings
+    # 2. Lazy load model and generate Embeddings
     logger.info(f"Generating embeddings for {len(chunks)} chunks...")
-    embeddings = embeddings_model.embed_documents(chunks)
+    model = get_embeddings_model()
+    embeddings = model.embed_documents(chunks)
 
     # 3. Prepare payload for Qdrant
     points = []

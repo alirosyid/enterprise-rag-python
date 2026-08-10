@@ -20,7 +20,8 @@ def test_unauthorized_access():
     """
     payload = {"query": "valid length query", "department": "sales"}
     response = client.post("/ask", json=payload)
-    assert response.status_code == 401 # Unauthorized Error
+    # This will now correctly match our custom 401 error handler in auth.py
+    assert response.status_code == 401 
 
 def test_submit_query_validation():
     """
@@ -31,7 +32,7 @@ def test_submit_query_validation():
         "department": "sales"
     }
     response = client.post("/ask", json=payload, headers=HEADERS)
-    assert response.status_code == 422 # Unprocessable Entity
+    assert response.status_code == 422 
 
 def test_ingest_validation():
     """

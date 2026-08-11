@@ -1,5 +1,6 @@
 import logging
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+# Enterprise Fix: Updated import path to match LangChain's new modular architecture
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client.http.models import PointStruct
 from app.services.qdrant_engine import qdrant_db, COLLECTION_NAME
 import uuid

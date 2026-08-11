@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from app.main import app  # Ensures DB tables are created prior to test
 from app.core.tasks import process_rag_query
 from app.db.models import FinOpsLog
@@ -8,26 +8,30 @@ from app.db.session import SessionLocal
 @patch("app.core.tasks.generate_llama_response")
 def test_process_rag_query_success(mock_llm):
     """
-    Validates the core Celery worker logic natively using eager execution.
+    Validates the core Celery worker logic natively.
+    Bypasses Celery decorator quirks by calling the original unwrapped function via .run()
     """
     mock_llm.return_value = {"answer": "Enterprise backend response", "tokens": 150}
     
-    # Enterprise Fix: Use apply_async to forcefully inject a task_id during eager execution.
-    # This prevents NOT NULL constraint crashes in DB when self.request.id evaluates to None.
-    task = process_rag_query.apply_async(
-        kwargs={
-            "query": "Test high-frequency data extraction", 
-            "department": "engineering"
-        },
-        task_id="simulated-celery-task-id-999"
+    # 1. Create a bulletproof Mock for the bound 'self' object
+    mock_self = MagicMock()
+    mock_self.request.id = "simulated-celery-task-id-999"
+    
+    # 2. Call .run() to execute the underlying python function directly, 
+    # bypassing the broken eager execution context entirely.
+    result = process_rag_query.run(
+        mock_self,
+        query="Test high-frequency data extraction", 
+        department="engineering",
+        callback_url=None
     )
     
-    result = task.result
-    
+    # 3. Verify Output Task
     assert result["status"] == "success"
     assert result["answer"] == "Enterprise backend response"
     assert result["tokens_burned"] == 150
     
+    # 4. Verify Stateful Database FinOps Logging
     db = SessionLocal()
     log_entry = db.query(FinOpsLog).filter(FinOpsLog.task_id == "simulated-celery-task-id-999").first()
     
@@ -42,19 +46,21 @@ def test_process_rag_query_success(mock_llm):
 @patch("app.core.tasks.generate_llama_response")
 def test_process_rag_query_failure(mock_llm):
     """
-    Ensures the worker correctly handles LLM failures and logs the error state.
+    Ensures the worker correctly handles LLM failures and triggers native Celery Retry.
     """
     mock_llm.side_effect = Exception("Groq API Timeout")
     
-    # Catching base Exception ensures CI/CD doesn't fail regardless of Celery 
-    # internal version differences (Retry vs MaxRetriesExceededError).
-    with pytest.raises(Exception):
-        process_rag_query.apply_async(
-            kwargs={
-                "query": "Test failure handling", 
-                "department": "engineering"
-            },
-            task_id="simulated-celery-task-id-888"
+    mock_self = MagicMock()
+    mock_self.request.id = "simulated-celery-task-id-888"
+    # Simulate the retry mechanism throwing an exception to halt execution
+    mock_self.retry.side_effect = Exception("CeleryRetryTriggered")
+    
+    with pytest.raises(Exception, match="CeleryRetryTriggered"):
+        process_rag_query.run(
+            mock_self,
+            query="Test failure handling", 
+            department="engineering",
+            callback_url=None
         )
     
     db = SessionLocal()

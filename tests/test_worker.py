@@ -16,10 +16,8 @@ def test_process_rag_query_success(mock_llm):
     mock_self = MagicMock()
     mock_self.request.id = "simulated-celery-task-id-999"
     
-    # 1. Enterprise Fix: Extract the raw Python function to prevent bound method parameter collision
     raw_task_function = process_rag_query.run.__func__
     
-    # 2. Execute with absolute manual control over 'self'
     result = raw_task_function(
         mock_self,
         query="Test high-frequency data extraction", 
@@ -27,12 +25,10 @@ def test_process_rag_query_success(mock_llm):
         callback_url=None
     )
     
-    # 3. Verify Output Task
     assert result["status"] == "success"
     assert result["answer"] == "Enterprise backend response"
     assert result["tokens_burned"] == 150
     
-    # 4. Verify Stateful Database FinOps Logging
     db = SessionLocal()
     log_entry = db.query(FinOpsLog).filter(FinOpsLog.task_id == "simulated-celery-task-id-999").first()
     
@@ -40,7 +36,10 @@ def test_process_rag_query_success(mock_llm):
     assert log_entry.query_type == "rag_generation"
     assert log_entry.status == "success"
     assert log_entry.total_tokens == 150
-    assert log_entry.cost_usd == 0.015 
+    
+    # Enterprise Fix: Wrap expected float value in pytest.approx() 
+    # to prevent IEEE 754 binary precision assertion failures.
+    assert log_entry.cost_usd == pytest.approx(0.015)
     
     db.close()
 

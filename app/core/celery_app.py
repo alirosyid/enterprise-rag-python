@@ -20,7 +20,9 @@ else:
 celery_app = Celery(
     "enterprise_worker",
     broker=BROKER_URL,
-    backend=BACKEND_URL
+    backend=BACKEND_URL,
+    # INJEKSI MEMORI TUGAS: Memaksa Worker membaca fungsi saat booting
+    include=["app.core.tasks", "app.services.tasks"] 
 )
 
 celery_app.conf.update(

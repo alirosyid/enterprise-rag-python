@@ -24,9 +24,10 @@ app = FastAPI(
 async def health_check():
     return {"status": "online", "service": "API Gateway", "database_synced": True}
 
-# Injected Depends(verify_api_key) to enforce Zero-Trust Security
+# Enterprise Fix: Removed 'async' to run CPU-bound ingestion in a separate thread pool.
+# This strictly prevents the FastAPI Event Loop from blocking during embedding operations.
 @app.post("/ingest", response_model=IngestResponse, tags=["Knowledge Base"], dependencies=[Depends(verify_api_key)])
-async def upload_document(request: IngestRequest):
+def upload_document(request: IngestRequest):
     """
     Ingests raw text into the Qdrant Vector Database.
     Secured endpoint requiring valid X-API-Key header.
@@ -42,7 +43,6 @@ async def upload_document(request: IngestRequest):
         logger.error(f"Ingestion failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to ingest document: {str(e)}")
 
-# Injected Depends(verify_api_key) to enforce Zero-Trust Security
 @app.post("/ask", response_model=TaskResponse, status_code=202, tags=["RAG Engine"], dependencies=[Depends(verify_api_key)])
 async def submit_query(request: QueryRequest):
     """

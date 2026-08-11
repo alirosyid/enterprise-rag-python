@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from app.main import app
 
 client = TestClient(app)
@@ -45,15 +45,17 @@ def test_ingest_validation():
     response = client.post("/ingest", json=payload, headers=HEADERS)
     assert response.status_code == 422 
 
-# Enterprise Upgrade: Happy Path Testing with Mocking
-@patch("app.core.tasks.generate_llama_response")
-def test_submit_query_success(mock_llm):
+# Enterprise Upgrade: Mock the Task Dispatcher, not the internal worker logic
+@patch("app.main.process_rag_query.delay")
+def test_submit_query_success(mock_delay):
     """
-    Tests the full asynchronous Celery workflow and FinOps tracking 
-    by intercepting and mocking the Groq API network call.
+    Tests API routing by intercepting the Celery dispatcher.
+    In enterprise unit tests, API and Background Workers must be tested in total isolation.
     """
-    # Hijack the LLM engine to return a fake response instantly
-    mock_llm.return_value = {"answer": "Simulated AI response", "tokens": 150}
+    # Simulate Celery returning an AsyncResult with a fake UUID
+    mock_task = MagicMock()
+    mock_task.id = "mocked-uuid-1234"
+    mock_delay.return_value = mock_task
     
     payload = {
         "query": "What is the standard procedure for B2B pipeline deployment?", 
@@ -63,15 +65,14 @@ def test_submit_query_success(mock_llm):
     
     assert response.status_code == 202
     assert response.json()["status"] == "processing"
-    assert "task_id" in response.json()
+    assert response.json()["task_id"] == "mocked-uuid-1234"
+    mock_delay.assert_called_once()
 
 @patch("app.main.ingest_document")
 def test_ingest_success(mock_ingest):
     """
-    Tests the document ingestion endpoint by intercepting the HuggingFace 
-    embedding generation and Qdrant network calls.
+    Tests the document ingestion API layer isolation.
     """
-    # Hijack the Qdrant ingestion to simulate 5 chunks successfully inserted
     mock_ingest.return_value = 5 
     
     payload = {

@@ -1,77 +1,68 @@
 import pytest
-from unittest.mock import patch, MagicMock
-# Mengimpor app untuk menjamin Base.metadata.create_all() tereksekusi sebelum pengujian
-from app.main import app 
+from unittest.mock import patch
+from celery.exceptions import Retry
+from app.main import app  # Ensures DB tables are created prior to test
 from app.core.tasks import process_rag_query
 from app.db.models import FinOpsLog
 from app.db.session import SessionLocal
 
-# Mock LLM engine untuk mencegah pembakaran token API nyata selama CI/CD berjalan
 @patch("app.core.tasks.generate_llama_response")
 def test_process_rag_query_success(mock_llm):
     """
-    Validates the core Celery worker logic in total isolation.
-    Ensures stateful FinOps logging and robust execution.
+    Validates the core Celery worker logic natively using eager execution.
+    Ensures stateful FinOps logging without hacking internal worker objects.
     """
-    # 1. Setup Mock Data
+    # 1. Setup Mock Data for Llama-3 extraction
     mock_llm.return_value = {"answer": "Enterprise backend response", "tokens": 150}
     
-    # 2. Membajak objek 'self' Celery untuk mengeksekusi fungsi tanpa Redis broker
-    mock_self = MagicMock()
-    mock_self.request.id = "simulated-celery-task-id-999"
-    
-    # 3. Eksekusi worker secara langsung (Sinkron untuk pengujian internal)
-    result = process_rag_query(
-        mock_self, 
-        query="Test B2B pipeline integration", 
+    # 2. Execute natively via .delay() (Runs synchronously due to task_always_eager=True)
+    task = process_rag_query.delay(
+        query="Test high-frequency data extraction", 
         department="engineering",
         callback_url=None
     )
     
-    # 4. Verifikasi Output Task
+    # 3. Retrieve EagerResult
+    result = task.result
+    
+    # 4. Verify Output Task
     assert result["status"] == "success"
     assert result["answer"] == "Enterprise backend response"
     assert result["tokens_burned"] == 150
     
-    # 5. Verifikasi Stateful Database FinOps Logging
+    # 5. Verify Stateful Database FinOps Logging using the native Celery Task ID
     db = SessionLocal()
-    log_entry = db.query(FinOpsLog).filter(FinOpsLog.task_id == "simulated-celery-task-id-999").first()
+    log_entry = db.query(FinOpsLog).filter(FinOpsLog.task_id == task.id).first()
     
     assert log_entry is not None
     assert log_entry.query_type == "rag_generation"
     assert log_entry.status == "success"
     assert log_entry.total_tokens == 150
-    assert log_entry.cost_usd == 0.015  # 150 tokens * $0.0001
+    assert log_entry.cost_usd == 0.015 
     
     db.close()
 
 @patch("app.core.tasks.generate_llama_response")
 def test_process_rag_query_failure(mock_llm):
     """
-    Ensures the worker correctly handles LLM failures, logs the error state,
-    and triggers the Celery retry mechanism.
+    Ensures the worker correctly handles LLM failures, triggers native Celery Retry,
+    and logs the error state.
     """
-    # Memaksa kegagalan/timeout pada Groq API
+    # Force a timeout on the Groq API
     mock_llm.side_effect = Exception("Groq API Timeout")
     
-    mock_self = MagicMock()
-    mock_self.request.id = "simulated-celery-task-id-888"
-    mock_self.retry.side_effect = Exception("RetryTriggered")
-    
-    # Worker harus menangkap kegagalan LLM dan memicu Retry
-    with pytest.raises(Exception, match="RetryTriggered"):
-        process_rag_query(
-            mock_self, 
+    # Eager execution with task_eager_propagates=True natively throws the Retry exception
+    with pytest.raises(Retry):
+        process_rag_query.delay(
             query="Test failure handling", 
             department="engineering",
             callback_url=None
         )
     
-    # Verifikasi bahwa FinOps log merekam status kegagalan tersebut
+    # Verify the FinOps log recorded the failure state
     db = SessionLocal()
-    log_entry = db.query(FinOpsLog).filter(FinOpsLog.task_id == "simulated-celery-task-id-888").first()
+    log_entry = db.query(FinOpsLog).filter(FinOpsLog.status == "failed").first()
     
     assert log_entry is not None
-    assert log_entry.status == "failed"
     
     db.close()

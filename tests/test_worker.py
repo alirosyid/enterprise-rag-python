@@ -9,17 +9,18 @@ from app.db.session import SessionLocal
 def test_process_rag_query_success(mock_llm):
     """
     Validates the core Celery worker logic natively.
-    Bypasses Celery decorator quirks by calling the original unwrapped function via .run()
+    Bypasses Celery decorator quirks by extracting the raw unbound function via __func__.
     """
     mock_llm.return_value = {"answer": "Enterprise backend response", "tokens": 150}
     
-    # 1. Create a bulletproof Mock for the bound 'self' object
     mock_self = MagicMock()
     mock_self.request.id = "simulated-celery-task-id-999"
     
-    # 2. Call .run() to execute the underlying python function directly, 
-    # bypassing the broken eager execution context entirely.
-    result = process_rag_query.run(
+    # 1. Enterprise Fix: Extract the raw Python function to prevent bound method parameter collision
+    raw_task_function = process_rag_query.run.__func__
+    
+    # 2. Execute with absolute manual control over 'self'
+    result = raw_task_function(
         mock_self,
         query="Test high-frequency data extraction", 
         department="engineering",
@@ -52,11 +53,12 @@ def test_process_rag_query_failure(mock_llm):
     
     mock_self = MagicMock()
     mock_self.request.id = "simulated-celery-task-id-888"
-    # Simulate the retry mechanism throwing an exception to halt execution
     mock_self.retry.side_effect = Exception("CeleryRetryTriggered")
     
+    raw_task_function = process_rag_query.run.__func__
+    
     with pytest.raises(Exception, match="CeleryRetryTriggered"):
-        process_rag_query.run(
+        raw_task_function(
             mock_self,
             query="Test failure handling", 
             department="engineering",

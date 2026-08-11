@@ -1,23 +1,17 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
-from sqlalchemy.sql import func
-from .session import Base
+from sqlalchemy import Column, String, Integer, Float, DateTime
+from datetime import datetime, timezone
+from app.db.session import Base
 
 class FinOpsLog(Base):
+    """
+    Enterprise Data Model for tracking LLM inference costs and worker states.
+    Ensures every async Celery task has an immutable audit trail.
+    """
     __tablename__ = "finops_logs"
 
-    # Primary Key
-    id = Column(Integer, primary_key=True, index=True)
-    
-    # Tracking ID untuk Celery Worker (Asynchronous tracking)
-    task_id = Column(String, index=True, nullable=True)
-    
-    # Metadata Eksekusi
-    query_type = Column(String, index=True)
+    task_id = Column(String, primary_key=True, index=True)
+    query_type = Column(String, index=True, default="rag_generation")
+    status = Column(String, default="pending")
     total_tokens = Column(Integer, default=0)
     cost_usd = Column(Float, default=0.0)
-    
-    # Status Pipeline (pending, success, failed)
-    status = Column(String, default="pending")
-    
-    # Timestamp Otomatis
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

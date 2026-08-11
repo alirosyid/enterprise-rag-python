@@ -1,7 +1,8 @@
 import os
+import logging
+from typing import Optional
 from fastapi import Security, HTTPException, status
 from fastapi.security import APIKeyHeader
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,8 @@ ENTERPRISE_API_KEY = os.getenv("ENTERPRISE_API_KEY", "b2b-secret-key-2026")
 # and manually enforce a standard 401 Unauthorized error with logging.
 api_key_header_scheme = APIKeyHeader(name="X-API-Key", auto_error=False)
 
-def verify_api_key(api_key: str = Security(api_key_header_scheme)):
+# Enterprise Fix: Typed as Optional[str] to prevent Pydantic 422 Validation Errors
+def verify_api_key(api_key: Optional[str] = Security(api_key_header_scheme)):
     """
     Zero-Trust Gateway Validation.
     Rejects any request without the exact X-API-Key header match.

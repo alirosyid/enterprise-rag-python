@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends
 import logging
 from app.db.session import engine, Base
+from app.db.models import FinOpsLog  # ENTERPRISE FIX: Load models into memory before create_all
 from app.api.schemas import QueryRequest, TaskResponse, IngestRequest, IngestResponse
 from app.core.tasks import process_rag_query
 from app.services.ingest import ingest_document
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Auto-migrate database tables
 logger.info("Verifying database schema...")
+# SQLAlchemy requires models to be imported before this execution
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -24,8 +26,6 @@ app = FastAPI(
 async def health_check():
     return {"status": "online", "service": "API Gateway", "database_synced": True}
 
-# Enterprise Fix: Removed 'async' to run CPU-bound ingestion in a separate thread pool.
-# This strictly prevents the FastAPI Event Loop from blocking during embedding operations.
 @app.post("/ingest", response_model=IngestResponse, tags=["Knowledge Base"], dependencies=[Depends(verify_api_key)])
 def upload_document(request: IngestRequest):
     """

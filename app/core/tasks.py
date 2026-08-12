@@ -17,12 +17,15 @@ def process_rag_query(self, query: str, department: str, callback_url: str = Non
     db = SessionLocal()
     task_id = self.request.id
     
+    # ENTERPRISE FIX: Menggunakan db.merge() untuk Upsert alih-alih db.add()
+    # Jika API Gateway sudah membuat task_id ini, Celery hanya akan meniban/meng-update-nya 
+    # tanpa memicu error Duplicate Key dari PostgreSQL.
     finops_record = FinOpsLog(
         task_id=task_id,
         query_type="rag_generation",
         status="processing"
     )
-    db.add(finops_record)
+    finops_record = db.merge(finops_record) 
     db.commit()
     
     try:

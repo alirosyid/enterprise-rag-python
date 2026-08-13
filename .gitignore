@@ -27,3 +27,7 @@ postgres_data/
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Local Executables
+k6.exe
+*.exe

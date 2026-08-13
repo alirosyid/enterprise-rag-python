@@ -5,6 +5,7 @@
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
 ![Qdrant](https://img.shields.io/badge/Qdrant-000000?style=for-the-badge&logo=qdrant&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+[![Enterprise RAG CI/CD](https://github.com/alirosyid/enterprise-rag-python/actions/workflows/ci.yml/badge.svg)](https://github.com/alirosyid/enterprise-rag-python/actions/workflows/ci.yml)
 
 An auditable, highly concurrent Retrieval-Augmented Generation (RAG) backend designed to eliminate API timeout bottlenecks and prevent LLM hallucinations in enterprise environments.
 

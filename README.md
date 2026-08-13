@@ -38,13 +38,29 @@ graph TD
 3. **Zero-Trust Networking:** The PostgreSQL state database and Qdrant vector store are isolated within a private Docker bridge network, inaccessible from public ports.
 4. **Stateful FinOps Tracking:** Every query's token usage is asynchronously logged to PostgreSQL, allowing precise tracking of inference costs across different business departments.
 
+## 📊 Performance Benchmarks (High-Availability Validation)
+
+To prove the resilience of this decoupled architecture, the API Gateway was subjected to concurrent stress testing using **Grafana k6**.
+
+**Test Parameters:**
+* **Concurrency:** 50 Virtual Users (VUs) continuous load.
+* **Payload:** Stateful RAG query ingestion targeting the `POST /ask` endpoint.
+* **Environment:** Local Docker deployment.
+
+**Results:**
+* **Zero Downtime:** `0.00%` request failure rate across 750 concurrent transactions.
+* **Asynchronous Offloading:** 100% of requests successfully returned a `202 Accepted` status.
+* **Ultra-Low Latency:** The API Gateway maintained an average response time of **21.7ms**, proving that heavy LLM inference tasks are completely isolated from the main event loop.
+
+![k6 Load Test Benchmark](assets/k6-load-test.png)
+
 ## 🚀 One-Click Deployment
 
 This infrastructure is fully containerized. Spin up the entire ecosystem (API, Worker, Broker, Vector DB, and Relational DB) locally in seconds.
 
 ```bash
 # 1. Clone the repository
-git clone [https://github.com/alirosyid/enterprise-rag-python.git](https://github.com/alirosyid/enterprise-rag-python.git)
+git clone https://github.com/alirosyid/enterprise-rag-python.git
 cd enterprise-rag-python
 
 # 2. Configure Environment

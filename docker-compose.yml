@@ -8,9 +8,9 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
       qdrant:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
     networks:
@@ -23,9 +23,9 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
+        condition: service_started
       qdrant:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
     networks:
@@ -38,11 +38,6 @@ services:
       - "6333:6333"
     volumes:
       - qdrant_data:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
     networks:
       - enterprise_net
 
@@ -51,11 +46,6 @@ services:
     container_name: redis_enterprise
     ports:
       - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
     networks:
       - enterprise_net
 

@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException, Depends
 import logging
+from celery.result import AsyncResult
 from app.db.session import engine, Base
-from app.db.models import FinOpsLog  # ENTERPRISE FIX: Load models into memory before create_all
+from app.db.models import FinOpsLog
 from app.api.schemas import QueryRequest, TaskResponse, IngestRequest, IngestResponse
+from app.core.celery_app import celery_app
 from app.core.tasks import process_rag_query
 from app.services.ingest import ingest_document
 from app.api.auth import verify_api_key
@@ -13,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 # Auto-migrate database tables
 logger.info("Verifying database schema...")
-# SQLAlchemy requires models to be imported before this execution
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -66,3 +67,20 @@ async def submit_query(request: QueryRequest):
     except Exception as e:
         logger.error(f"Failed to dispatch task: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal message broker error.")
+
+@app.get("/tasks/{task_id}", tags=["RAG Engine"], dependencies=[Depends(verify_api_key)])
+async def get_task_status(task_id: str):
+    """
+    Polls the status and result of an asynchronous RAG processing task.
+    Secured endpoint requiring valid X-API-Key header.
+    """
+    task_result = AsyncResult(task_id, app=celery_app)
+
+    if task_result.state == "PENDING":
+        return {"task_id": task_id, "status": "pending", "message": "Task is queued or processing."}
+    elif task_result.state == "SUCCESS":
+        return {"task_id": task_id, "status": "completed", "result": task_result.result}
+    elif task_result.state == "FAILURE":
+        return {"task_id": task_id, "status": "failed", "error": str(task_result.info)}
+    else:
+        return {"task_id": task_id, "status": task_result.state.lower()}

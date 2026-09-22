@@ -5,7 +5,7 @@ from app.main import app
 client = TestClient(app)
 
 # The static test key matching our environment default
-HEADERS = {"X-API-Key": "b2b-secret-key-2026"}
+HEADERS = {"X-API-Key": "b2b-super-secret-key-2026"}
 
 def test_health_check():
     """

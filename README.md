@@ -71,4 +71,4 @@ cp .env.example .env
 
 # 3. Spin up the microservices
 docker-compose up -d --build
-```
+``` 

@@ -16,3 +16,4 @@ tenacity>=8.2.3
 httpx>=0.26.0
 pypdf>=4.0.1
 pytest>=8.0.0
+prometheus-client>=0.20.0

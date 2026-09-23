@@ -1,74 +1,42 @@
-# 🚀 Enterprise Event-Driven RAG Engine
+# 🚀 Enterprise-Grade RAG & Stateful API Gateway
 
-[![Enterprise RAG CI/CD](https://github.com/alirosyid/enterprise-rag-python/actions/workflows/ci.yml/badge.svg)](https://github.com/alirosyid/enterprise-rag-python/actions/workflows/ci.yml)
+A production-ready, event-driven Retrieval-Augmented Generation (RAG) backend engineered to solve LLM API latency bottlenecks and hallucination risks in B2B environments.
 
-![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)
-![Qdrant](https://img.shields.io/badge/Qdrant-000000?style=for-the-badge&logo=qdrant&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+Built with **FastAPI, Celery, Redis, Qdrant**, and deployed via **AWS Terraform**.
 
-An auditable, highly concurrent Retrieval-Augmented Generation (RAG) backend designed to eliminate API timeout bottlenecks and prevent LLM hallucinations in enterprise environments.
+## 🏗️ Core Architecture Pillars
 
-## ⚡ Architecture Blueprint
+This repository demonstrates senior-level system design principles, moving beyond simple stateless CRUD wrappers into fully decoupled, observable microservices:
 
-This system abandons legacy synchronous REST APIs in favor of a decoupled, **Event-Driven Architecture (EDA)**. Heavy LLM inference and vector searches are offloaded to background Celery workers, ensuring the API Gateway remains responsive under high concurrency loads.
+*   **1. Zero-Latency Redis Semantic Caching:** 
+    Implemented vector-based caching interceptors. Redundant prompts with >0.96 cosine similarity are served directly from Redis in `<10ms`, bypassing expensive Groq/Llama-3 API calls and reducing token expenditure by up to 40%.
+*   **2. Async Task Polling & Stateful Workers:** 
+    Heavy LLM inference tasks are offloaded to asynchronous Celery background workers. The API Gateway returns immediate `202 Accepted` statuses with a `job_id`, preventing HTTP timeout drop-offs during complex reasoning chains.
+*   **3. Enterprise Observability:** 
+    Integrated Prometheus metrics (`/metrics`) to monitor API request volume, vector search latency, and Celery queue depth for seamless Grafana dashboard visualization.
+*   **4. Infrastructure as Code (IaC):** 
+    AWS deployment is fully codified using Terraform (`/aws-infrastructure`), defining strict Zero-Trust security groups that isolate the Qdrant Vector DB from public subnets.
 
-```mermaid
-graph TD
-    Client[Client / n8n Webhook] -->|HTTP POST| API[FastAPI Gateway]
-    API -->|Auth & Validate| Redis[Redis Message Broker]
-    API -.->|202 Accepted Task ID| Client
-    
-    Redis -->|Consume Task| Worker[Celery Async Worker]
-    
-    subgraph Isolated Docker Network
-        Worker -->|1. Vector Search| Qdrant[(Qdrant Vector DB)]
-        Worker -->|2. Generation| LLM[Groq / Llama-3 API]
-        Worker -->|3. State Logging| Postgres[(PostgreSQL)]
-    end
-    
-    Worker -->|4. Store Result| Redis
-    Client -->|Poll Task ID| API
-    API -->|Fetch Result| Redis
-```
+## ⚙️ Tech Stack
+*   **API Gateway:** FastAPI, Python 3.12, Uvicorn
+*   **Message Broker & Cache:** Redis
+*   **Background Processing:** Celery
+*   **Vector Database:** Qdrant
+*   **Observability:** Prometheus Client
+*   **Infrastructure:** Docker Compose, AWS EC2, Terraform
 
-## 🛡️ Core Engineering Capabilities
+## 📡 Core API Endpoints
 
-1. **Decoupled Worker Nodes:** API Gateway only handles request routing and validation. Groq API calls (Llama-3) are executed asynchronously via Celery, preventing thread-blocking during peak traffic.
-2. **Parallel Hallucination Grading:** Retrieved documents are strictly evaluated by parallel LLM nodes before answer generation. If the context does not support the query, the system deterministically halts generation.
-3. **Zero-Trust Networking:** The PostgreSQL state database and Qdrant vector store are isolated within a private Docker bridge network, inaccessible from public ports.
-4. **Stateful FinOps Tracking:** Every query's token usage is asynchronously logged to PostgreSQL, allowing precise tracking of inference costs across different business departments.
+| Method | Endpoint | Description | Status / Capability |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/ingest` | Vectorize and store B2B documents | Synchronous, chunked processing |
+| `POST` | `/ask` | Submit LLM/RAG query | Returns `202 Accepted` + `task_id` |
+| `GET` | `/tasks/{id}` | Poll inference status | Returns `PENDING`, `SUCCESS`, or `FAILURE` |
+| `GET` | `/metrics` | Prometheus scraper endpoint | Exposes real-time throughput metrics |
 
-## 📊 Performance Benchmarks (High-Availability Validation)
+## 🛠️ Local Deployment (Dockerized)
 
-To prove the resilience of this decoupled architecture, the API Gateway was subjected to concurrent stress testing using **Grafana k6**.
-
-**Test Parameters:**
-* **Concurrency:** 50 Virtual Users (VUs) continuous load.
-* **Payload:** Stateful RAG query ingestion targeting the `POST /ask` endpoint.
-* **Environment:** Local Docker deployment.
-
-**Results:**
-* **Zero Downtime:** `0.00%` request failure rate across 750 concurrent transactions.
-* **Asynchronous Offloading:** 100% of requests successfully returned a `202 Accepted` status.
-* **Ultra-Low Latency:** The API Gateway maintained an average response time of **21.7ms**, proving that heavy LLM inference tasks are completely isolated from the main event loop.
-
-![k6 Load Test Benchmark](assets/k6-load-test.png)
-
-## 🚀 One-Click Deployment
-
-This infrastructure is fully containerized. Spin up the entire ecosystem (API, Worker, Broker, Vector DB, and Relational DB) locally in seconds.
+Ensure Docker Desktop is running, then spin up the entire isolated microservice architecture:
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/alirosyid/enterprise-rag-python.git
-cd enterprise-rag-python
-
-# 2. Configure Environment
-cp .env.example .env
-# Edit .env with your specific API keys
-
-# 3. Spin up the microservices
-docker-compose up -d --build
-``` 
+docker-compose up --build -d

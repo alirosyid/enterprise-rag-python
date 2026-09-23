@@ -1,12 +1,28 @@
 import os
 import httpx
 import logging
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+def fallback_llm_response(retry_state):
+    """
+    Fungsi fallback Circuit Breaker. 
+    Dieksekusi jika LLM API gagal total (Timeout/Rate Limit) setelah 3 percobaan.
+    """
+    logger.error(f"Circuit Breaker aktif! Eksekusi API dihentikan. Error: {retry_state.outcome.exception()}")
+    return {
+        "answer": "Peringatan Sistem: Layanan AI eksternal sedang mengalami gangguan konektivitas (Rate Limit/Timeout). Sistem secara otomatis memblokir pemanggilan lebih lanjut untuk melindungi batas tagihan. Silakan coba beberapa saat lagi.",
+        "tokens": 0
+    }
+
+@retry(
+    stop=stop_after_attempt(3), 
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception),
+    retry_error_callback=fallback_llm_response
+)
 def generate_llama_response(prompt: str) -> dict:
     """
     Calls the Groq API (Llama-3) with enterprise-grade retry mechanisms.
